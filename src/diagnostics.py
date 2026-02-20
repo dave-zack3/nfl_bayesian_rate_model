@@ -1,0 +1,5 @@
+import arviz as az
+
+def run_diagnostics(trace):
+    summary = az.summary(trace)
+    print(summary)
