@@ -27,7 +27,8 @@ def main():
 
     trace = sample_model(model)
 
-    run_diagnostics(trace)
+    summary = run_diagnostics(trace)
+    print(summary)
 
 if __name__ == "__main__":
     main()
