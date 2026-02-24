@@ -1,100 +1,162 @@
 import pandas as pd
+from pathlib import Path
+import json
+from datetime import datetime
 import nfl_data_py as nfl
 
-pd.set_option("display.max_rows", None)
-pd.set_option("display.max_columns", None)
+def detect_available_seasons(min_year=2009):
+    import nfl_data_py as nfl
+    years = nfl.import_schedules(range(min_year, 2100))["season"].unique()
+    return sorted(years)
 
-pbp_df = pd.read_csv("../data/raw/pbp_2021.csv")
+def build_season_dataset(year, output_dir, force_rebuild=False):
 
-pbp_df = pbp_df[pbp_df["season_type"]=="REG"]
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
-drives = (
-    pbp_df.groupby(["game_id","posteam"])["drive"]
-          .nunique()
-          .reset_index(name = "drives")
-)
+    season_path = output_dir / f"nfl_team_game_{year}.csv"
 
-final_scores = (
-    pbp_df.groupby("game_id")
-          .tail(1)
-          [["game_id", "home_team", "away_team",
-            "total_home_score", "total_away_score"]]
-)
+    if season_path.exists() and not force_rebuild:
+        print(f"Season {year} already cached.")
+        return season_path
 
-home_df = final_scores[["game_id",
-                        "home_team",
-                        "away_team",
-                        "total_home_score"
-]].copy()
+    print(f"Building season dataset for {year}...")
 
-home_df.columns = ["game_id", "team", "opponent", "points"]
-home_df["home_flag"] = 1
+    pbp_df = nfl.import_pbp_data([year])
+    pbp_df = pbp_df[pbp_df["season_type"] == "REG"]
 
-away_df = final_scores[["game_id",
-                        "away_team",
-                        "home_team",
-                        "total_away_score"
-]].copy()
+    pbp_df = pbp_df[
+        ["game_id", "season", "week",
+         "posteam", "home_team", "away_team",
+         "total_home_score", "total_away_score",
+         "drive"]
+    ]
 
-away_df.columns = ["game_id", "team", "opponent", "points"]
-away_df["home_flag"] = 0
+    drives = (
+        pbp_df.groupby(["game_id", "posteam"])["drive"]
+              .nunique()
+              .reset_index(name="drives")
+    )
 
-game_df = pd.concat([home_df,away_df], ignore_index=True)
+    final_scores = (
+        pbp_df.groupby("game_id")
+              .tail(1)
+              [["game_id", "season", "week",
+                "home_team", "away_team",
+                "total_home_score", "total_away_score"]]
+    )
 
-model_df = pd.merge(left=game_df, 
-                    right=drives, 
-                    left_on=["game_id", "team"],
-                    right_on=["game_id","posteam"],
-                    how="left")
+    home_df = final_scores[
+        ["game_id", "season", "week",
+         "home_team", "away_team",
+         "total_home_score"]
+    ].copy()
 
-model_df.dropna()
+    home_df.columns = ["game_id", "season", "week",
+                       "team", "opponent", "points"]
+    home_df["home_flag"] = 1
 
-teams = sorted(model_df["team"].unique())
-team_to_idx = {team: i for i, team in enumerate(teams)}
+    away_df = final_scores[
+        ["game_id", "season", "week",
+         "away_team", "home_team",
+         "total_away_score"]
+    ].copy()
 
-model_df["team_idx"] = model_df["team"].map(team_to_idx)
-model_df["opponent_idx"] = model_df["opponent"].map(team_to_idx)
+    away_df.columns = ["game_id", "season", "week",
+                       "team", "opponent", "points"]
+    away_df["home_flag"] = 0
 
-def validate_team_game_df(df):
+    game_df = pd.concat([home_df, away_df], ignore_index=True)
 
-    # Row count check
-    if df.shape[0] != 544:
-        raise ValueError(f"Expected 544 rows, got {df.shape[0]}")
+    model_df = pd.merge(
+        left=game_df,
+        right=drives,
+        left_on=["game_id", "team"],
+        right_on=["game_id", "posteam"],
+        how="left"
+    )
 
-    # Unique teams
-    if df["team"].nunique() != 32:
-        raise ValueError("Expected 32 unique teams")
+    model_df = model_df.sort_values(["season", "week", "game_id"])
 
-    # Unique games
-    if df["game_id"].nunique() != 272:
-        raise ValueError("Expected 272 unique games")
+    model_df.to_csv(season_path, index=False)
+    print(f"Saved season {year} → {season_path}")
 
-    # Duplicate check
-    if df.duplicated(subset=["game_id", "team"]).sum() != 0:
-        raise ValueError("Duplicate game/team rows found")
+    return season_path
 
-    # Null check
-    if df.isna().sum().sum() != 0:
-        raise ValueError("Null values detected")
+def build_multi_season_dataset(
+    years,
+    processed_dir="data/processed",
+    version="v1",
+    force_rebuild=False
+):
 
-    # Logical checks
-    if (df["team"] == df["opponent"]).any():
-        raise ValueError("Team playing itself detected")
+    processed_dir = Path(processed_dir)
+    season_dir = processed_dir / "seasons"
+    season_dir.mkdir(parents=True, exist_ok=True)
 
-    if (df["drives"] <= 0).any():
-        raise ValueError("Non-positive drives detected")
+    season_paths = []
 
-    if (df["points"] < 0).any():
-        raise ValueError("Negative points detected")
+    for year in years:
+        path = build_season_dataset(
+            year,
+            season_dir,
+            force_rebuild=force_rebuild
+        )
+        season_paths.append(path)
 
-    if df["team_idx"].min() != 0 or df["team_idx"].max() != 31:
-        raise ValueError("team_idx out of expected range")
+    # -----------------------------
+    # Aggregate seasons
+    # -----------------------------
 
-    if df["opponent_idx"].min() != 0 or df["opponent_idx"].max() != 31:
-        raise ValueError("opponent_idx out of expected range")
+    print("Aggregating seasons...")
+    dfs = [pd.read_csv(p) for p in season_paths]
+    model_df = pd.concat(dfs, ignore_index=True)
 
-    print("Validation passed.")
+    # Stable team index across seasons
+    teams = sorted(model_df["team"].unique())
+    team_to_idx = {team: i for i, team in enumerate(teams)}
 
-validate_team_game_df(model_df)
-model_df.to_csv("../data/processed/nfl_2021_team_game.csv", index=False)
+    model_df["team_idx"] = model_df["team"].map(team_to_idx)
+    model_df["opponent_idx"] = model_df["opponent"].map(team_to_idx)
 
+    # Time index within each season
+    model_df["time_idx"] = (
+        model_df.groupby("season")["week"]
+                .transform(lambda x: x.rank(method="dense").astype(int) - 1)
+    )
+
+    # -----------------------------
+    # Write final dataset
+    # -----------------------------
+
+    final_path = processed_dir / f"nfl_dynamic_ready_{version}.csv"
+    model_df.to_csv(final_path, index=False)
+
+    print(f"Final dataset written → {final_path}")
+
+    # -----------------------------
+    # Write metadata JSON
+    # -----------------------------
+
+    metadata = {
+        "version": version,
+        "years": years,
+        "n_rows": len(model_df),
+        "n_teams": model_df["team"].nunique(),
+        "n_seasons": model_df["season"].nunique(),
+        "n_weeks_per_season": (
+            model_df.groupby("season")["time_idx"]
+                    .nunique()
+                    .to_dict()
+        ),
+        "created_at_utc": datetime.utcnow().isoformat()
+    }
+
+    meta_path = processed_dir / f"nfl_dynamic_ready_{version}_metadata.json"
+
+    with open(meta_path, "w") as f:
+        json.dump(metadata, f, indent=2)
+
+    print(f"Metadata written → {meta_path}")
+
+    return final_path

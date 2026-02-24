@@ -1,39 +1,89 @@
 import numpy as np
 import pymc as pm
 
-def build_model(team_idx, opp_idx, points, drives, home_flag, n_teams):
+def build_model(team_idx, opp_idx, time_idx,
+                points, drives, home_flag,
+                n_teams, n_weeks):
 
     with pm.Model() as model:
 
-        # Hyperpriors
-        sigma_off = pm.HalfNormal("sigma_off", 1.0)
-        sigma_def = pm.HalfNormal("sigma_def", 1.0)
+        # ----------------------------------------
+        # Random walk innovation scales
+        # ----------------------------------------
+        # Controls how much team strength evolves week-to-week
+        sigma_off_rw = pm.HalfNormal("sigma_off_rw", 0.3)
+        sigma_def_rw = pm.HalfNormal("sigma_def_rw", 0.3)
 
-        # Team effects
-        offense_raw = pm.Normal("offense_raw", 0, 1, shape=n_teams)
-        defense_raw = pm.Normal("defense_raw", 0, 1, shape=n_teams)
-
-        offense = offense_raw * sigma_off
-        defense = defense_raw * sigma_def
-
-        # Sum-to-zero constraint
-        offense = offense - pm.math.mean(offense)
-        defense = defense - pm.math.mean(defense)
-
-        # Intercept + home field
-        intercept = pm.Normal("intercept", 0, 1)
-        beta_home = pm.Normal("beta_home", 0, 1)
-
-        # Linear predictor
-        log_lambda = (
-            intercept
-            + offense[team_idx]
-            - defense[opp_idx]
-            + beta_home * home_flag
-            + np.log(drives)
+        # ----------------------------------------
+        # Dynamic offense latent states
+        # Shape: (teams, weeks)
+        # init_dist anchors week 0 to avoid diffuse geometry
+        # ----------------------------------------
+        offense_raw = pm.GaussianRandomWalk(
+            "offense_raw",
+            sigma=sigma_off_rw,
+            shape=(n_teams, n_weeks),
+            init_dist=pm.Normal.dist(0, 0.3)
         )
 
+        # ----------------------------------------
+        # Dynamic defense latent states
+        # ----------------------------------------
+        defense_raw = pm.GaussianRandomWalk(
+            "defense_raw",
+            sigma=sigma_def_rw,
+            shape=(n_teams, n_weeks),
+            init_dist=pm.Normal.dist(0, 0.3)
+        )
+
+        # ----------------------------------------
+        # Weekly sum-to-zero constraint
+        # Ensures identifiability of team strengths
+        # ----------------------------------------
+        offense = offense_raw - pm.math.mean(
+            offense_raw, axis=0, keepdims=True
+        )
+
+        defense = defense_raw - pm.math.mean(
+            defense_raw, axis=0, keepdims=True
+        )
+
+        # ----------------------------------------
+        # Structural parameters
+        # ----------------------------------------
+        intercept = pm.Normal("intercept", 0, 1)
+
+        sigma_home = pm.HalfNormal("sigma_home", 0.5)
+        home_raw = pm.Normal("home_raw", 0, 1, shape=n_teams)
+        home_effect = home_raw * sigma_home
+
+        beta_pace = pm.Normal("beta_pace", 1.0, 0.3)
+
+        # NB dispersion
+        phi = pm.HalfNormal("phi", 5)
+
+        # ----------------------------------------
+        # Linear predictor
+        # ----------------------------------------
+        log_lambda = (
+            intercept
+            + offense[team_idx, time_idx]
+            - defense[opp_idx, time_idx]
+            + home_effect[team_idx] * home_flag
+            + beta_pace * np.log(drives)
+        )
+
+        # ----------------------------------------
         # Likelihood
-        pm.Poisson("points_obs", mu=pm.math.exp(log_lambda), observed=points)
+        # If points contains NaN values,
+        # PyMC automatically treats them as missing
+        # and generates posterior predictive samples
+        # ----------------------------------------
+        pm.NegativeBinomial(
+            "points",
+            mu=pm.math.exp(log_lambda),
+            alpha=phi,
+            observed=points
+        )
 
     return model

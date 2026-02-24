@@ -1,46 +1,103 @@
-from src.model_spec import build_model
-from src.fit_model import sample_model
-from src.diagnostics import run_diagnostics
+from pathlib import Path
 import pandas as pd
-import numpy as np
+from src.data_loader import detect_available_seasons, build_multi_season_dataset
+from src.model_wrapper import build_model_from_df
+from src.fit_model import sample_model
+from src.evaluation.rolling_backtest import rolling_backtest
+from src.evaluation.vegas_loader import load_vegas_spreads
+from src.experiment_logger import log_experiment
+from src.evaluation.elo_model import run_elo_backtest
+from src.evaluation.elo_metrics import compute_elo_metrics
 
-pd.set_option("display.max_rows", 8)
-pd.set_option("display.max_rows", 32)
+def main(force_rebuild=False):
 
-def main():
+    YEARS = detect_available_seasons(min_year=2021)
+    DATA_VERSION = "v1"
 
-    df = pd.read_csv("data/processed/nfl_2021_team_game.csv")
+    data_path = Path(f"data/processed/nfl_dynamic_ready_{DATA_VERSION}.csv")
 
-    team_idx = df["team_idx"].values
-    opp_idx = df["opponent_idx"].values
-    points = df["points"].values
-    drives = df["drives"].values
-    home_flag = df["home_flag"].values
+    if force_rebuild or not data_path.exists():
+        print("Building dataset...")
+        data_path = build_multi_season_dataset(
+            YEARS,
+            version=DATA_VERSION,
+            force_rebuild=False
+        )
 
-    n_teams = df["team_idx"].nunique()
+    df = pd.read_csv(data_path)
 
-    model = build_model(
-        team_idx,
-        opp_idx,
-        points,
-        drives,
-        home_flag,
-        n_teams
+    # -----------------------------
+    # Merge Vegas
+    # -----------------------------
+
+    vegas = load_vegas_spreads()
+    df = df.merge(vegas, on="game_id", how="left")
+
+    print("Vegas missing %:",
+      df["closing_spread"].isna().mean())
+
+    # -----------------------------
+    # Train/Test split
+    # -----------------------------
+
+    YEARS = sorted(df["season"].unique())
+    TRAIN_SEASONS = YEARS[:-1]
+    TEST_SEASON = YEARS[-1]
+
+    print(f"Train seasons: {TRAIN_SEASONS}")
+    print(f"Test season: {TEST_SEASON}")
+
+    # -----------------------------
+    # Rolling Backtest
+    # -----------------------------
+
+    results_df = rolling_backtest(
+        df,
+        build_model_from_df,
+        sample_model,
+        TEST_SEASON
     )
 
-    trace = sample_model(model)
+    summary = {
+        "rmse_mean": results_df["rmse"].mean(),
+        "mae_mean": results_df["mae"].mean(),
+        "brier_mean": results_df["brier"].mean(),
+        "lpd_mean": results_df["lpd"].mean(),
+        "units_total": results_df["units_won"].sum(),
+        "avg_edge_mean": results_df["avg_edge"].mean(),
+        "sharpness_mean": results_df["sharpness"].mean(),
+    }
 
-    team_to_idx = (
-        df[["team", "team_idx"]]
-        .drop_duplicates()
-        .set_index("team")["team_idx"]
-        .to_dict()
-    )
+    print("\n=== ROLLING BACKTEST SUMMARY ===")
+    for k, v in summary.items():
+        print(f"{k}: {v:.4f}")
 
-    results = run_diagnostics(trace, team_to_idx)
+    # -----------------------------
+    # Log experiment
+    # -----------------------------
 
-    print(results["summary"])
-    print(results["team_effects"])
+    config = {
+        "years": YEARS,
+        "dataset_version": DATA_VERSION,
+        "model_type": "dynamic_nb",
+        "evaluation": "rolling_expanding_window"
+    }
+
+    log_experiment(config, summary, results_df.to_dict())
+
+    # -----------------------------
+    # Elo Benchmark
+    # -----------------------------
+
+    elo_results = run_elo_backtest(df, TEST_SEASON)
+    elo_summary = compute_elo_metrics(elo_results)
+
+    print("\n=== ELO BENCHMARK ===")
+    for k, v in elo_summary.items():
+        print(f"{k}: {v:.4f}")
+
+    return results_df, summary
+
 
 if __name__ == "__main__":
     main()
