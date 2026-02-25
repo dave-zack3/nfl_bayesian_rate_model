@@ -119,10 +119,73 @@ def build_multi_season_dataset(
     model_df["team_idx"] = model_df["team"].map(team_to_idx)
     model_df["opponent_idx"] = model_df["opponent"].map(team_to_idx)
 
-    # Time index within each season
-    model_df["time_idx"] = (
-        model_df.groupby("season")["week"]
-                .transform(lambda x: x.rank(method="dense").astype(int) - 1)
+    # ---------------------------------------------------
+    # GLOBAL sequential time index across all seasons
+    # ---------------------------------------------------
+
+    model_df = model_df.sort_values(["season", "week", "game_id"])
+
+    # Create global week counter
+    season_week = (
+        model_df[["season", "week"]]
+        .drop_duplicates()
+        .sort_values(["season", "week"])
+        .reset_index(drop=True)
+    )
+
+    season_week["global_time_idx"] = range(len(season_week))
+
+    model_df = model_df.merge(
+        season_week,
+        on=["season", "week"],
+        how="left"
+    )
+
+    model_df["time_idx"] = model_df["global_time_idx"]
+
+    model_df.drop(columns=["global_time_idx"], inplace=True)
+
+    # ---------------------------------------------------
+    # Season ID (integer 0,1,2,...)
+    # ---------------------------------------------------
+
+    season_lookup = (
+        model_df[["season"]]
+        .drop_duplicates()
+        .sort_values("season")
+        .reset_index(drop=True)
+    )
+
+    season_lookup["season_id"] = range(len(season_lookup))
+
+    model_df = model_df.merge(
+        season_lookup,
+        on="season",
+        how="left"
+    )
+
+    # ---------------------------------------------------
+    # Flag season start (first week of each season)
+    # ---------------------------------------------------
+
+    first_week_lookup = (
+        model_df.groupby("season")["time_idx"]
+        .min()
+        .reset_index()
+    )
+
+    first_week_lookup["is_season_start"] = 1
+
+    model_df = model_df.merge(
+        first_week_lookup,
+        on=["season", "time_idx"],
+        how="left"
+    )
+
+    model_df["is_season_start"] = (
+        model_df["is_season_start"]
+        .fillna(0)
+        .astype(int)
     )
 
     # -----------------------------
@@ -139,16 +202,20 @@ def build_multi_season_dataset(
     # -----------------------------
 
     metadata = {
-        "version": version,
-        "years": years,
-        "n_rows": len(model_df),
-        "n_teams": model_df["team"].nunique(),
-        "n_seasons": model_df["season"].nunique(),
-        "n_weeks_per_season": (
-            model_df.groupby("season")["time_idx"]
-                    .nunique()
-                    .to_dict()
-        ),
+        "version": str(version),
+        "years": [int(y) for y in years],
+        "n_rows": int(len(model_df)),
+        "n_teams": int(model_df["team"].nunique()),
+        "n_seasons": int(model_df["season"].nunique()),
+        "n_weeks_per_season": {
+            int(k): int(v)
+            for k, v in (
+                model_df.groupby("season")["time_idx"]
+                        .nunique()
+                        .to_dict()
+                        .items()
+            )
+        },
         "created_at_utc": datetime.utcnow().isoformat()
     }
 
@@ -160,3 +227,56 @@ def build_multi_season_dataset(
     print(f"Metadata written → {meta_path}")
 
     return final_path
+
+def build_game_level_spread_dataset(df):
+
+    """
+    Converts team-game level dataframe into
+    game-level spread dataset (one row per game).
+    """
+
+    # Keep only home rows (one per game)
+    home_df = df[df["home_flag"] == 1].copy()
+
+    # Identify away rows
+    away_df = df[df["home_flag"] == 0].copy()
+
+    # Merge home and away on game_id
+    merged = home_df.merge(
+        away_df,
+        on="game_id",
+        suffixes=("_home", "_away")
+    )
+
+    # Compute spread (home - away)
+    merged["spread"] = (
+        merged["points_home"]
+        - merged["points_away"]
+    )
+
+    # Build clean dataset
+    spread_df = merged[[
+        "game_id",
+        "season_home",
+        "season_id_home",
+        "time_idx_home",
+        "is_season_start_home",
+        "team_idx_home",
+        "team_idx_away",
+        "spread"
+    ]].copy()
+
+    spread_df.columns = [
+        "game_id",
+        "season",
+        "season_id",
+        "time_idx",
+        "is_season_start",
+        "home_team_idx",
+        "away_team_idx",
+        "spread"
+    ]
+
+    spread_df["home_flag"] = 1  # always home perspective
+
+    return spread_df

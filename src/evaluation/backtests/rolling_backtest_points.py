@@ -1,15 +1,14 @@
 import pandas as pd
 import numpy as np
 import pymc as pm
-from .spread_metrics import (
-    spread_rmse,
-    spread_mae,
+from src.evaluation.metrics import (
+    mae,
     brier_score,
     log_predictive_density,
     betting_edge
 )
 
-def rolling_backtest(
+def rolling_backtest_points(
     df,
     build_model_fn,
     sample_fn,
@@ -123,8 +122,8 @@ def rolling_backtest(
 
         metrics = {
             "week": week,
-            "rmse": spread_rmse(mean_spread, observed_spread),
-            "mae": spread_mae(mean_spread, observed_spread),
+            "rmse": rmse(mean_spread, observed_spread),
+            "mae": mae(mean_spread, observed_spread),
             "brier": brier_score(prob_home_win, observed_spread),
             "lpd": log_predictive_density(
                 spread_samples,

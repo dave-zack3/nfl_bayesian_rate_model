@@ -2,10 +2,10 @@ import numpy as np
 import pandas as pd
 from scipy.stats import norm
 
-def spread_rmse(pred_mean, observed):
+def rmse(pred_mean, observed):
     return np.sqrt(np.mean((pred_mean - observed) ** 2))
 
-def spread_mae(pred_mean, observed):
+def mae(pred_mean, observed):
     return np.mean(np.abs(pred_mean - observed))
 
 def brier_score(prob_home_win, observed_spread):

@@ -12,7 +12,7 @@ def build_model(team_idx, opp_idx, time_idx,
         # -------------------------------------------------
         # Constrained to (0,1) since negative persistence
         # is not meaningful for team strength.
-        rho = pm.Beta("rho", alpha=8, beta=2)
+        rho = pm.Beta("rho", alpha=2, beta=2)
 
         # -------------------------------------------------
         # Innovation scales

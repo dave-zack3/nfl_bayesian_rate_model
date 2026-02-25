@@ -1,17 +1,22 @@
-# Data Directory
+# Data Processing
 
-## raw/
-Raw downloaded datasets (play-by-play, Vegas spreads).
+- Multi-season ingestion via nfl_data_py
+- Stable team indexing across seasons
+- Weekly time indexing
+- Game-level spread dataset construction
+- Optional Vegas closing line merge
 
-## processed/
-Model-ready datasets with:
+---
 
-- Team indices
-- Opponent indices
-- Time index
-- Drive counts
-- Home flag
-- Closing spreads
+## Dataset Types
 
-Datasets are versioned via:
-nfl_dynamic_ready_vX.csv
+1. Team-game dataset (points model)
+2. Game-level dataset (spread model)
+3. Elo-ready dataset
+
+---
+
+## Train/Test Split
+
+- Expanding window
+- Final season reserved for evaluation

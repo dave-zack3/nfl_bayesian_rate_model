@@ -116,6 +116,11 @@ def run_diagnostics(trace, team_to_idx):
         corr = np.corrcoef(rho_samples, sigma_samples)[0,1]
         results["rho_sigma_corr"] = corr
 
+    if "alpha" in posterior:
+        print(f"alpha (mean ± sd): "
+            f"{posterior['alpha'].mean().item():.4f} ± "
+            f"{posterior['alpha'].std().item():.4f}")
+
     # =====================================================
     # ArviZ summary table
     # =====================================================

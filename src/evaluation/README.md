@@ -1,53 +1,43 @@
 # Evaluation Framework
 
-This directory contains all out-of-sample evaluation logic.
+This module provides rigorous out-of-sample testing.
 
 ---
 
-## rolling_backtest.py
+## Rolling Expanding Window
 
-Implements expanding-window rolling evaluation.
+For each week in the test season:
 
-For each week:
+1. Train on all prior data
+2. Forecast next week
+3. Record metrics
 
-- Train on all previous data
-- Mask current week points
-- Sample posterior
-- Generate posterior predictive
-- Compute spread metrics
+Prevents look-ahead bias.
 
 ---
 
-## spread_metrics.py
+## Metrics
 
-Implements:
-
-- RMSE
+- RMSE (primary comparison metric)
 - MAE
-- Brier score
 - Log Predictive Density
-- Betting edge
-- Sharpness
+- Sharpness (predictive variance)
 
 ---
 
-## elo_model.py
+## Elo Benchmark
 
-Baseline Elo rating model.
+Standard Elo model implemented for comparison.
 
-- Initialized at 1500
-- Logistic expectation
-- K-factor update
-- Home advantage adjustment
-
----
-
-## elo_metrics.py
-
-Computes benchmark RMSE, MAE, and Brier score.
+Purpose:
+- Provide simple baseline
+- Identify structural gaps
+- Prevent self-referential validation
 
 ---
 
-## vegas_loader.py
+## Philosophy
 
-Loads and formats Vegas closing spread data.
+Performance must be demonstrated out-of-sample.
+
+Structural diagnostics alone are insufficient.

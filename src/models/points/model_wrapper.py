@@ -1,4 +1,4 @@
-from src.model_spec import build_model
+from src.models.points.model_spec import build_model
 
 def build_model_from_df(df):
 
