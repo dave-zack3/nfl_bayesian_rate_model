@@ -26,7 +26,8 @@ def sample_model(model,
             initvals=start,
             chains=chains,
             cores=cores,
-            nuts={"max_treedepth": max_treedepth}
+            nuts={"max_treedepth": max_treedepth},
+            return_inferencedata=True
         )
 
     return trace

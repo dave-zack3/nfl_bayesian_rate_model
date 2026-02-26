@@ -1,5 +1,6 @@
 from pathlib import Path
 import pandas as pd
+import arviz as az
 
 # -----------------------------
 # Data
@@ -11,7 +12,7 @@ from src.data_loader import (
 )
 
 # -----------------------------
-# Points Model (Generative)
+# Points Model
 # -----------------------------
 from src.models.points.model_wrapper import build_model_from_df
 from src.models.points.diagnostics import run_diagnostics
@@ -19,9 +20,10 @@ from src.fit_model import sample_model
 from src.evaluation.backtests.rolling_backtest_points import rolling_backtest_points
 
 # -----------------------------
-# Spread Model (Direct)
+# Spread Model
 # -----------------------------
 from src.models.spread.spread_model_wrapper import build_spread_model_from_df
+from src.models.spread.diagnostics import summarize_spread_structure
 from src.evaluation.backtests.rolling_backtest_spread import rolling_backtest_spread
 
 # -----------------------------
@@ -39,9 +41,9 @@ from src.evaluation.reporting import (
 from src.evaluation.vegas_loader import load_vegas_spreads
 from src.evaluation.benchmarks.elo_model import run_elo_backtest
 
-#------------------------------
-# Metric Calculation
-#------------------------------
+# -----------------------------
+# Metrics
+# -----------------------------
 from src.evaluation.metrics import rmse, mae, brier_score
 
 # -----------------------------
@@ -49,36 +51,42 @@ from src.evaluation.metrics import rmse, mae, brier_score
 # -----------------------------
 from src.experiment_logger import log_experiment
 
+
 # =====================================================
-# PIPELINE CONFIGURATION
+# CONFIGURATION
 # =====================================================
 CONFIG = {
     "force_rebuild": False,
     "run_points": False,
     "run_spread": True,
-    "multi_season": True,
     "min_year": 2018,
-    "dataset_version": "v1"
+    "dataset_version": "v1",
+    "draws": 500,
+    "tune": 500,
+    "chains": 2
 }
 
 # =====================================================
-# SPREAD MODEL EXPERIMENTS (A: Beta(8,2) vs Beta(2,2))
+# SPREAD EXPERIMENTS
 # =====================================================
 SPREAD_EXPERIMENTS = [
     {
-        "name": "Beta(8,2)",
+        "name": "Bayesian_Heteroskedastic",
         "rho_prior": {"type": "beta", "a": 8, "b": 2},
-        "sigma_theta_prior": {"type": "halfnormal", "scale": 0.2}
+        "sigma_theta_prior": {"type": "halfnormal", "scale": 0.2},
+        "noise_type": "heteroskedastic"
     },
     {
-        "name": "Beta(2,2)",
-        "rho_prior": {"type": "beta", "a": 2, "b": 2},
-        "sigma_theta_prior": {"type": "halfnormal", "scale": 0.2}
+        "name": "Bayesian_Homoskedastic",
+        "rho_prior": {"type": "beta", "a": 8, "b": 2},
+        "sigma_theta_prior": {"type": "halfnormal", "scale": 0.2},
+        "noise_type": "homoskedastic"
     }
 ]
 
+
 # =====================================================
-# MAIN PIPELINE
+# MAIN
 # =====================================================
 def main(config):
 
@@ -87,7 +95,7 @@ def main(config):
     run_spread = config["run_spread"]
 
     # -------------------------------------------------
-    # Dataset construction
+    # Dataset
     # -------------------------------------------------
     YEARS = detect_available_seasons(min_year=config["min_year"])
     DATA_VERSION = config["dataset_version"]
@@ -104,65 +112,19 @@ def main(config):
 
     df = pd.read_csv(data_path)
 
-    # -------------------------------------------------
-    # Merge Vegas spreads
-    # -------------------------------------------------
     vegas = load_vegas_spreads()
     df = df.merge(vegas, on="game_id", how="left")
-
-    print("Vegas missing %:",
-          df["closing_spread"].isna().mean())
 
     YEARS = sorted(df["season"].unique())
     TEST_SEASON = YEARS[-1]
 
-    print(f"Train seasons: {YEARS[:-1]}")
+    print(f"\nTrain seasons: {YEARS[:-1]}")
     print(f"Test season: {TEST_SEASON}")
 
     all_results = {}
 
     # =====================================================
-    # POINTS MODEL
-    # =====================================================
-    if run_points:
-
-        print("\nRunning POINTS model...")
-
-        # Full structural fit
-        full_model = build_model_from_df(df)
-        full_trace = sample_model(full_model)
-
-        team_to_idx = (
-            df[["team", "team_idx"]]
-            .drop_duplicates()
-            .set_index("team")["team_idx"]
-            .to_dict()
-        )
-
-        diag = run_diagnostics(full_trace, team_to_idx)
-
-        print("\nPOINTS MODEL STRUCTURE")
-        print("-----------------------")
-
-        for key, val in diag.items():
-            if isinstance(val, float):
-                print(f"{key}: {val:.4f}")
-
-        # Rolling backtest
-        points_results = rolling_backtest_points(
-            df,
-            build_model_from_df,
-            sample_model,
-            TEST_SEASON
-        )
-
-        points_summary = summarize_points_results(points_results)
-        print_summary(points_summary, "POINTS MODEL SUMMARY")
-
-        all_results["points_model"] = points_summary
-
-    # =====================================================
-    # SPREAD MODEL EXPERIMENT LOOP
+    # SPREAD MODEL
     # =====================================================
     if run_spread:
 
@@ -173,9 +135,46 @@ def main(config):
 
         for experiment in SPREAD_EXPERIMENTS:
 
-            print("\n----------------------------------------")
-            print(f"Experiment: {experiment['name']}")
-            print("----------------------------------------")
+            print("\n=================================================")
+            print(f"STRUCTURAL FIT — {experiment['name']}")
+            print("=================================================")
+
+            # -------------------------------------------------
+            # FULL STRUCTURAL FIT (ALL DATA)
+            # -------------------------------------------------
+            full_model = build_spread_model_from_df(spread_df, experiment)
+            full_trace = sample_model(
+                full_model,
+                draws=config["draws"],
+                tune=config["tune"],
+                chains=config["chains"]
+            )
+
+            # Create output folder once
+            output_dir = Path("whitepaper_outputs")
+            output_dir.mkdir(exist_ok=True)
+
+            # Save trace
+            az.to_netcdf(
+                full_trace,
+                output_dir / f"{experiment['name']}_trace.nc"
+            )
+
+            print(f"Trace saved: {experiment['name']}_trace.nc")
+
+            structure_summary = summarize_spread_structure(full_trace)
+
+            for param, stats in structure_summary.items():
+                if isinstance(stats, dict) and "mean" in stats:
+                    if "sd" in stats:
+                        print(f"{param}: {stats['mean']:.4f} ± {stats['sd']:.4f}")
+                    else:
+                        print(f"{param}: {stats['mean']:.4f}")
+
+            # -------------------------------------------------
+            # ROLLING BACKTEST
+            # -------------------------------------------------
+            print("\nRolling Backtest...")
 
             spread_results = rolling_backtest_spread(
                 spread_df,
@@ -185,27 +184,36 @@ def main(config):
                 experiment
             )
 
-            spread_summary = summarize_spread_results(spread_results)
-
-            print_summary(
-                spread_summary,
-                f"SPREAD MODEL — {experiment['name']}"
+            spread_results.to_csv(
+                output_dir / f"{experiment['name']}_rolling.csv",
+                index=False
             )
 
-            spread_experiment_results[experiment["name"]] = spread_summary
+            performance_summary = summarize_spread_results(spread_results)
+
+            print_summary(
+                performance_summary,
+                f"SPREAD PERFORMANCE — {experiment['name']}"
+            )
+
+            spread_experiment_results[experiment["name"]] = {
+                "structure": structure_summary,
+                "performance": performance_summary
+            }
 
         all_results["spread_model"] = spread_experiment_results
 
-        # Optional quick comparison
-        print("\nSPREAD EXPERIMENT COMPARISON (RMSE)")
-        print("------------------------------------")
-        for name, summary in spread_experiment_results.items():
-            print(f"{name}: {summary['rmse_mean']:.4f}")
+        # Quick RMSE comparison
+        print("\nRMSE Comparison")
+        print("----------------")
+        for name, res in spread_experiment_results.items():
+            print(f"{name}: {res['performance']['rmse_mean']:.4f}")
 
     # =====================================================
     # ELO BENCHMARK
     # =====================================================
     elo_results = run_elo_backtest(df, TEST_SEASON)
+
     elo_summary = {
         "rmse": rmse(
             elo_results["predicted_spread"].values,
@@ -225,13 +233,15 @@ def main(config):
 
     all_results["elo"] = elo_summary
 
-    # =====================================================
-    # LOG EXPERIMENT
-    # =====================================================
+    # -------------------------------------------------
+    # Log
+    # -------------------------------------------------
     run_config = {
         "years": YEARS,
         "dataset_version": DATA_VERSION,
-        "evaluation": "rolling_expanding_window"
+        "evaluation": "rolling_expanding_window",
+        "draws": config["draws"],
+        "tune": config["tune"]
     }
 
     log_experiment(run_config, all_results, {})

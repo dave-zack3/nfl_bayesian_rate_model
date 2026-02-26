@@ -1,43 +1,25 @@
 # Evaluation Framework
 
-This module provides rigorous out-of-sample testing.
+We use expanding-window backtesting:
 
----
-
-## Rolling Expanding Window
-
-For each week in the test season:
-
-1. Train on all prior data
-2. Forecast next week
-3. Record metrics
-
-Prevents look-ahead bias.
-
----
+For each week:
+- Fit on all prior data
+- Mask current week outcomes
+- Generate posterior predictive distribution
+- Compute metrics
 
 ## Metrics
 
-- RMSE (primary comparison metric)
+- RMSE
 - MAE
-- Log Predictive Density
-- Sharpness (predictive variance)
+- Log Predictive Density (LPD)
+- Sharpness
+- Brier score (for win probability)
+- Betting edge (optional)
 
----
+## Why LPD Matters
 
-## Elo Benchmark
+RMSE measures point accuracy.
+LPD measures probabilistic calibration.
 
-Standard Elo model implemented for comparison.
-
-Purpose:
-- Provide simple baseline
-- Identify structural gaps
-- Prevent self-referential validation
-
----
-
-## Philosophy
-
-Performance must be demonstrated out-of-sample.
-
-Structural diagnostics alone are insufficient.
+We prioritize LPD when comparing Bayesian models.

@@ -1,0 +1,20 @@
+# Core Scientific Stack
+numpy>=1.24
+pandas>=2.0
+scipy>=1.10
+matplotlib>=3.7
+
+# Bayesian Modeling
+pymc>=5.0
+arviz>=0.16
+pytensor>=2.14
+
+# NetCDF / Trace Saving
+xarray>=2023.0
+h5py>=3.9
+
+# Data
+nfl_data_py>=0.3
+
+# Optional (metrics / utilities)
+scikit-learn>=1.3

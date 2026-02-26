@@ -1,70 +1,92 @@
 # NFL Bayesian Team Strength & Spread Modeling
 
-A research-driven Bayesian framework for estimating team strength and predicting NFL point spreads, evaluated against an Elo benchmark using rolling out-of-sample backtesting.
+A research-driven Bayesian framework for estimating dynamic NFL team strength and predicting point spreads, evaluated against an Elo benchmark using rolling out-of-sample backtesting.
 
 ---
 
 ## Objective
 
-1. Estimate offensive and defensive team strength relative to league average.
-2. Model temporal evolution of team strength.
-3. Predict game spreads.
-4. Benchmark performance against Elo.
-5. Improve upon Elo using principled probabilistic modeling.
+This project builds a probabilistic alternative to Elo for modeling NFL team strength and game spreads.
+
+Goals:
+
+1. Estimate dynamic team strength.
+2. Model week-to-week persistence and offseason shifts.
+3. Predict point spreads with calibrated uncertainty.
+4. Compare performance against a standard Elo benchmark.
+5. Evaluate models strictly out-of-sample using rolling validation.
 
 ---
 
-## Model Overview
+## Model Architecture
 
-### 1. Generative Scoring Model
-- Hierarchical offense & defense parameters
-- Negative Binomial likelihood (handles over-dispersion)
-- AR(1) strength evolution:
-  
-  \[
-  \theta_t = \rho \theta_{t-1} + \epsilon_t
-  \]
+### Dynamic Team Strength Model
 
-- Sum-to-zero constraint each week for identifiability
-
-Outputs:
-- Posterior strength trajectories
-- Persistence parameter (ρ)
-- Dispersion parameter (φ)
-
----
-
-### 2. Direct Spread Model
-
-Rather than deriving spread from simulated scores, a separate Gaussian spread model is estimated:
+Team strength evolves according to an AR(1) process:
 
 \[
-Spread \sim \mathcal{N}(\theta_{home} - \theta_{away} + \beta_{home}, \sigma)
+\theta_t = \rho \theta_{t-1} + \epsilon_t
 \]
 
-#### MOV Heteroskedastic Extension
+Where:
 
-Residual variance scales with expected dominance:
+- \( \rho \) = persistence parameter  
+- \( \epsilon_t \sim \mathcal{N}(0, \sigma_{weekly}) \)
+
+An offseason volatility term allows structural shifts between seasons:
+
+\[
+\theta_{start\ of\ season} += \eta_s
+\]
+
+Where:
+
+- \( \eta_s \sim \mathcal{N}(0, \sigma_{offseason}) \)
+
+A sum-to-zero constraint ensures identifiability each week.
+
+---
+
+### Direct Bayesian Spread Model
+
+Rather than simulating scores, spreads are modeled directly:
+
+\[
+Spread \sim \mathcal{N}(
+\theta_{home} - \theta_{away} + \beta_{home},
+\sigma_i
+)
+\]
+
+Two noise specifications are evaluated:
+
+- **Homoskedastic**
+- **Heteroskedastic (Margin-of-Victory Scaling)**
+
+Heteroskedastic form:
 
 \[
 \sigma_i = \sigma_0 (1 + \alpha |\mu_i|)
 \]
 
-This mimics Elo’s margin-of-victory adjustment in a fully generative Bayesian framework.
+This mimics Elo’s margin-of-victory adjustment in a fully probabilistic framework.
 
 ---
 
-## Evaluation Framework
+## 🔬 Evaluation Framework
 
-- Rolling expanding-window cross-validation
+All performance is evaluated using:
+
+- Rolling expanding-window backtesting
 - Final season held out for testing
-- Metrics:
-  - RMSE (primary)
-  - MAE
-  - Log Predictive Density
-  - Predictive sharpness
+- Strictly no data leakage
 
-All comparisons are strictly out-of-sample.
+Metrics:
+
+- RMSE
+- MAE
+- Log Predictive Density
+- Predictive Sharpness
 
 ---
 
@@ -73,57 +95,83 @@ All comparisons are strictly out-of-sample.
 A standard Elo model is implemented for reference.
 
 Purpose:
-- Provide baseline performance
-- Identify structural advantages/disadvantages
-- Prevent overfitting illusions
+
+- Provide baseline comparison
+- Ensure improvements are meaningful
+- Avoid overfitting illusions
 
 ---
 
-## Key Findings
+## Experimental Design (Whitepaper Set)
 
-- Poisson under-dispersed scoring relative to observed variance.
-- Negative Binomial improved posterior predictive alignment.
-- AR(1) bounded variance relative to random walk.
-- Direct spread modeling reduced variance inflation from generative scoring.
-- MOV heteroskedastic scaling introduced adaptive uncertainty similar to Elo.
+The final whitepaper compares:
+
+1. **Bayesian (Heteroskedastic)**
+2. **Bayesian (Homoskedastic)**
+3. **Elo Baseline**
+
+Structural fits are sampled with:
+
+- 500 draws
+- 500 tuning iterations
+- NUTS sampler (target_accept=0.95)
+
+All structural traces are saved to NetCDF for reproducibility.
 
 ---
 
 ## Repository Structure
 
-- `model/` – Generative scoring model
-- `spread_model/` – Direct spread model
-- `evaluation/` – Rolling backtest + Elo benchmark
-- `data/` – Multi-season processing pipeline
-- `logs/` – Reproducible experiment records
+data/
+    processed datasets
+
+src/
+    data_loader.py
+    models/
+        evaluation/
+            fit_model.py
+            run_pipeline.py
+
+whitepaper_outputs/
+    saved traces (.nc)
+    rolling backtest CSVs
 
 ---
 
-## Why This Project Matters
+## Key Structural Findings
+
+- Team strength is highly persistent (ρ ≈ 0.98).
+- Weekly volatility exceeds offseason volatility.
+- Home-field advantage ≈ 1.6 points.
+- Heteroskedastic scaling improves predictive calibration.
+
+---
+
+## Why This Matters
 
 This project demonstrates:
 
 - Hierarchical Bayesian modeling
-- Time-series state evolution (AR(1))
-- Proper posterior predictive checking
-- Out-of-sample rolling validation
-- Benchmark comparison
-- Controlled model iteration
+- Dynamic state-space modeling
+- Probabilistic forecasting
+- Strict out-of-sample validation
+- Benchmark-driven evaluation
+- Reproducible experiment design
 
-The design prioritizes interpretability, statistical discipline, and reproducibility over feature sprawl.
+It prioritizes interpretability, statistical discipline, and transparent evaluation over feature sprawl.
 
 ---
 
 ## Next Steps
 
-- Structured margin-of-victory update dynamics
 - Time-varying volatility
-- Prior calibration experiments
-- Further benchmarking
+- Injury-adjusted priors
+- Play-level feature augmentation
+- Betting edge analysis
+- Expanded multi-league evaluation
 
 ---
 
-## Author Note
+## Author
 
-All modeling decisions were stress-tested via posterior predictive checks and out-of-sample evaluation.  
-Complexity was added only when justified by performance or statistical necessity.
+Developed as a portfolio sports analytics research project focused on interpretable probabilistic modeling and rigorous evaluation.

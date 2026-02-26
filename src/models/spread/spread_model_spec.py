@@ -64,6 +64,11 @@ def build_spread_model(
             shape=(n_seasons, n_teams)
         )
 
+        pm.Deterministic(
+            "offseason_shock_magnitude",
+            pt.mean(pt.abs(eta))
+        )
+
         # =================================================
         # INITIAL TEAM STRENGTH
         # =================================================
@@ -135,6 +140,26 @@ def build_spread_model(
         )
 
         # =================================================
+        # INTERPRETABLE COMPONENTS
+        # =================================================
+        pm.Deterministic("league_mean_strength", pt.mean(theta))
+
+        pm.Deterministic(
+            "avg_abs_strength",
+            pt.mean(pt.abs(theta))
+        )
+
+        pm.Deterministic(
+            "avg_weekly_volatility",
+            sigma_theta
+        )
+
+        pm.Deterministic(
+            "avg_offseason_volatility",
+            sigma_offseason
+        )
+
+        # =================================================
         # HOME FIELD EFFECT
         # =================================================
 
@@ -180,6 +205,11 @@ def build_spread_model(
             )
 
             sigma = sigma0 * (1 + alpha * pt.abs(mu_spread))
+
+            pm.Deterministic(
+                "avg_noise_scale",
+                pt.mean(sigma)
+            )
 
         else:
             raise ValueError("Unsupported noise type")

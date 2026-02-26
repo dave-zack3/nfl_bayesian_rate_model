@@ -1,43 +1,48 @@
-# Direct Spread Model
+# Spread Model (Dynamic AR(1))
 
-This model predicts game spread directly rather than deriving it from scoring distributions.
+This model directly predicts game-level point spread using a
+Bayesian dynamic state-space framework.
 
----
+## Structure
 
-## Baseline Model
+Latent team strength evolves as:
 
-Spread ~ Normal(μ, σ)
+    theta_t = rho * theta_{t-1} + eps_t
 
-μ = θ_home - θ_away + β_home
+Where:
+- rho ∈ (0,1) controls persistence
+- eps_t ~ Normal(0, sigma_theta)
 
-Where θ follows:
+At the start of each season:
 
-- Static (season-level)
-- AR(1) dynamic evolution
+    theta_t += eta_season
 
----
+Where:
+- eta_season ~ Normal(0, sigma_offseason)
 
-## MOV Heteroskedastic Extension
+This captures offseason roster / coaching / structural changes.
 
-Residual variance scales with expected dominance:
+## Observation Model
 
-σ_i = σ₀ (1 + α |μ_i|)
+Spread = theta_home − theta_away + beta_home + noise
 
-This mimics Elo’s margin-of-victory adjustment in a fully generative Bayesian framework.
+Noise options:
+- Homoskedastic Normal
+- Heteroskedastic Normal (variance increases with expected dominance)
 
----
+## Interpretable Parameters
 
-## Why Direct Spread?
+- rho: strength persistence across weeks
+- sigma_theta: weekly volatility
+- sigma_offseason: offseason structural change magnitude
+- beta_home: home-field advantage
+- avg_abs_strength: league parity measure
+- offseason_shock_magnitude: average offseason movement
 
-The generative points model can inflate predictive spread variance due to:
-- Independent scoring noise
-- NB over-dispersion
+## Motivation
 
-Direct modeling aligns likelihood with evaluation metric (spread RMSE).
+The model improves on Elo by:
 
----
-
-## Interpretation
-
-- α > 0 implies larger mismatches have higher uncertainty.
-- If α ≈ 0, homoskedastic assumption suffices.
+- Explicitly modeling strength evolution
+- Allowing structural breaks
+- Modeling uncertainty probabilistically
