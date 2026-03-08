@@ -123,20 +123,24 @@ All structural traces are saved to NetCDF for reproducibility.
 
 ## Repository Structure
 
+`
 data/
     processed datasets
-
+`
+`
 src/
     data_loader.py
     models/
         evaluation/
             fit_model.py
             run_pipeline.py
+`
 
+`
 whitepaper_outputs/
     saved traces (.nc)
     rolling backtest CSVs
-
+`
 ---
 
 ## Key Structural Findings
