@@ -122,21 +122,37 @@ All structural traces are saved to NetCDF for reproducibility.
 ---
 
 ## Repository Structure
+
 ├── data
+
 │   ├── outputs
+
 │   ├── processed
+
 │   │   └── seasons
+
 │   └── raw
+
 ├── scripts
+
 └── src
+
     ├── evaluation
+
     │   ├── backtests
+
     │   └── benchmarks
+
     ├── models
+
     │   ├── points
+
     │   └── spread
+
     └── whitepaper
+
         ├── figures
+        
         └── tables
 
 ---
