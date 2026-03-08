@@ -122,9 +122,6 @@ All structural traces are saved to NetCDF for reproducibility.
 ---
 
 ## Repository Structure
-
-`
-
 ├── data
 │   ├── outputs
 │   ├── processed
@@ -141,6 +138,7 @@ All structural traces are saved to NetCDF for reproducibility.
     └── whitepaper
         ├── figures
         └── tables
+
 ---
 
 ## Key Structural Findings
