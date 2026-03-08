@@ -31,18 +31,18 @@ Team strength evolves according to an AR(1) process:
 
 Where:
 
-- $\( \rho \)$ = persistence parameter  
-- \( \epsilon_t \sim \mathcal{N}(0, \sigma_{weekly}) \)
+- $\ \rho \$ = persistence parameter  
+- $\ \epsilon_t \sim \mathcal{N}(0, \sigma_{weekly}) \$
 
 An offseason volatility term allows structural shifts between seasons:
 
-\[
+```math
 \theta_{start\ of\ season} += \eta_s
-\]
+```
 
 Where:
 
-- \( \eta_s \sim \mathcal{N}(0, \sigma_{offseason}) \)
+- $\ \eta_s \sim \mathcal{N}(0, \sigma_{offseason}) \$
 
 A sum-to-zero constraint ensures identifiability each week.
 
@@ -52,12 +52,12 @@ A sum-to-zero constraint ensures identifiability each week.
 
 Rather than simulating scores, spreads are modeled directly:
 
-\[
+```math
 Spread \sim \mathcal{N}(
 \theta_{home} - \theta_{away} + \beta_{home},
 \sigma_i
 )
-\]
+```
 
 Two noise specifications are evaluated:
 
@@ -66,9 +66,9 @@ Two noise specifications are evaluated:
 
 Heteroskedastic form:
 
-\[
+```math
 \sigma_i = \sigma_0 (1 + \alpha |\mu_i|)
-\]
+```
 
 This mimics Elo’s margin-of-victory adjustment in a fully probabilistic framework.
 
