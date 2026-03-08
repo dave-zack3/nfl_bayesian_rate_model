@@ -24,13 +24,14 @@ Goals:
 
 Team strength evolves according to an AR(1) process:
 
-\[
+
+```math
 \theta_t = \rho \theta_{t-1} + \epsilon_t
-\]
+```
 
 Where:
 
-- \( \rho \) = persistence parameter  
+- $\( \rho \)$ = persistence parameter  
 - \( \epsilon_t \sim \mathcal{N}(0, \sigma_{weekly}) \)
 
 An offseason volatility term allows structural shifts between seasons:
@@ -73,7 +74,7 @@ This mimics Elo’s margin-of-victory adjustment in a fully probabilistic framew
 
 ---
 
-## 🔬 Evaluation Framework
+## Evaluation Framework
 
 All performance is evaluated using:
 
